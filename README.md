@@ -47,11 +47,36 @@ message (chat window, or `gamma ask` in the console).
 1. Build or install the mod so that `Mods/Gamma/` exists (building does this
    automatically — see *Building* below).
 2. In game, press **O** — if no API key is set yet, the **Gamma Settings** screen opens
-   automatically. Pick a provider (OpenAI, OpenRouter, Groq, Ollama, LM Studio, Anthropic…),
-   paste your API key, and hit **Save**. You can also get there any time via the
-   **Settings** button in the chat window or `gamma settings` in the SMAPI console.
+   automatically. Pick a provider (Google AI Studio, OpenRouter, OpenAI, Groq, Ollama,
+   LM Studio, Anthropic…), paste your API key, and hit **Save**. You can also get there any
+   time via the **Settings** button in the chat window or `gamma settings` in the SMAPI console.
 3. If you prefer editing files by hand, run the game once so SMAPI creates
    `Mods/Gamma/config.json`, edit it, and restart.
+
+### Getting an API key
+
+Gamma needs one API key from any supported provider. Two good free options:
+
+**Option 1 — Google AI Studio (free, recommended)**
+
+1. Go to [aistudio.google.com](https://aistudio.google.com/) and sign in with a Google account.
+2. Click **Get API key** in the sidebar (or open [aistudio.google.com/apikey](https://aistudio.google.com/apikey) directly).
+3. Click **Create API key**, choose or create a project, and copy the key (starts with `AIza`).
+4. In Gamma's settings screen (press **O** in game), pick the **Google AI Studio** preset, paste the key, and hit **Save**. The model is pre-filled to `gemini-flash-lite-latest`.
+
+Recommended model: **`gemini-flash-lite-latest`** — fast, cheap, and good enough at tool-calling for everyday questions. If you want stronger reasoning for harder questions, `gemini-flash-latest` or `gemini-2.5-flash` are drop-in upgrades (same key, just change the Model field).
+
+**Option 2 — OpenRouter (free tier available)**
+
+1. Go to [openrouter.ai](https://openrouter.ai/) and sign up (email or Google/GitHub login).
+2. Open [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) (Profile → **Keys**).
+3. Click **Create key**, give it any name, and copy it (starts with `sk-or-v1-`, shown only once — save it somewhere).
+4. Free models work out of the box; there's no need to add credits unless you pick paid models.
+5. In Gamma's settings screen, pick the **OpenRouter** preset, paste the key, and hit **Save**. The model is pre-filled to `minimax/minimax-m3:free`.
+
+Recommended model: **`minimax/minimax-m3:free`** — a large free model with a 1M-token context window. Note that OpenRouter free models have daily limits and can be busy at peak times; if a request fails with a rate-limit error, either retry later or add a few dollars of credit and drop the `:free` suffix to use the paid variant (`minimax/minimax-m3`).
+
+**Manual setup** — if you'd rather edit the config file than use the in-game screen, run the game once so SMAPI creates `Mods/Gamma/config.json`, then set `Provider`, `ApiKey`, and `Model` as in the examples below and restart.
 
 ### AI provider examples
 
@@ -61,6 +86,16 @@ message (chat window, or `gamma ask` in the console).
   "Provider": "openai",
   "ApiKey": "sk-...",
   "Model": "gpt-4o-mini"
+}
+```
+
+**Google AI Studio** (free key — see *Getting an API key* above)
+```json
+{
+  "Provider": "openai",
+  "ApiBaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai/",
+  "ApiKey": "AIza...",
+  "Model": "gemini-flash-lite-latest"
 }
 ```
 
@@ -79,7 +114,7 @@ message (chat window, or `gamma ask` in the console).
   "Provider": "openai",
   "ApiBaseUrl": "https://openrouter.ai/api/v1",
   "ApiKey": "sk-or-...",
-  "Model": "openai/gpt-4o-mini"
+  "Model": "minimax/minimax-m3:free"
 }
 ```
 
@@ -128,7 +163,7 @@ in-game settings, pick `searxng` and the search row becomes the instance URL fie
   scroll wheel reviews history.
 - When a reply arrives while the window is closed, a badge appears on the HUD.
 - **Generic Mod Config Menu** — if you have
-  [GMCM](https://www.nexusmods.com/stardewvalley/mods/9185) installed, every option
+  [GMCM](https://www.nexusmods.com/stardewvalley/mods/5098) installed, every option
   (provider, key, model, web search, the chat keybind, and the chatbot's display name)
   is editable in its UI at the title screen or under the game's options cog icon.
   "Reset to defaults" there deliberately keeps your API keys.
