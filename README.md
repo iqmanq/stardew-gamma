@@ -44,8 +44,11 @@ message (chat window, or `gamma ask` in the console).
 
 ## Setup
 
-1. Build or install the mod so that `Mods/Gamma/` exists (building does this
-   automatically — see *Building* below).
+1. Install the mod: download `Gamma-1.0.0.zip` from the
+   [latest release](https://github.com/iqmanq/stardew-gamma/releases/latest) (or from the
+   Nexus page) and unzip it into your game's `Mods/` folder — you should end up with
+   `Mods/Gamma/` containing `Gamma.dll` and `manifest.json`. (Alternatively, build from
+   source — see *Building* below; that installs into `Mods/` automatically.)
 2. In game, press **O** — if no API key is set yet, the **Gamma Settings** screen opens
    automatically. Pick a provider (Google AI Studio, OpenRouter, OpenAI, Groq, Ollama,
    LM Studio, Anthropic…), paste your API key, and hit **Save**. You can also get there any
