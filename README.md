@@ -3,7 +3,7 @@
 An AI assistant living inside Stardew Valley. Press a key in game and chat with an AI that
 can see your farm and search the Stardew Valley Wiki and the web to answer anything.
 
-![what it does] It knows your game, not just the wiki.
+> It knows your game, not just the wiki.
 
 ## Features
 
@@ -64,7 +64,7 @@ Gamma needs one API key from any supported provider. Two good free options:
 3. Click **Create API key**, choose or create a project, and copy the key (starts with `AIza`).
 4. In Gamma's settings screen (press **O** in game), pick the **Google AI Studio** preset, paste the key, and hit **Save**. The model is pre-filled to `gemini-flash-lite-latest`.
 
-Recommended model: **`gemini-flash-lite-latest`** — fast, cheap, and good enough at tool-calling for everyday questions. If you want stronger reasoning for harder questions, `gemini-flash-latest` or `gemini-2.5-flash` are drop-in upgrades (same key, just change the Model field).
+Recommended model: **`gemini-flash-lite-latest`** — fast, 500 free requests per day, and good enough at tool-calling for everyday questions. If you want stronger reasoning for harder questions, `gemini-flash-latest` or `gemini-3.5-flash` (requires setting up billing, paid) are drop-in upgrades (same key, just change the Model field).
 
 **Option 2 — OpenRouter (free tier available)**
 
