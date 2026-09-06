@@ -1,0 +1,9 @@
+{
+  "Name": "Gamma",
+  "Author": "iqraa",
+  "Version": "1.0.0",
+  "Description": "An AI assistant living in your game: it knows your farm, quests, inventory, chests, mods and world, and can search the Stardew Valley wiki and the web to answer anything.",
+  "UniqueID": "iqraa.Gamma",
+  "EntryDll": "Gamma.dll",
+  "MinimumApiVersion": "4.0.0"
+}

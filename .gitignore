@@ -1,0 +1,4 @@
+bin/
+obj/
+benchmark/results.json
+*.log
