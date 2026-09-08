@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -19,19 +20,37 @@ public class ChatService
     /// <summary>The conversation store (multi-chat).</summary>
     public readonly ChatHistory History;
 
-    private bool _busy;
+    private readonly ConcurrentQueue<Action> PendingUpdates = new();
+    private readonly Func<LlmClient> ClientFactory;
 
-    /// <summary>True while a request/tool loop is in flight.</summary>
-    public bool Busy => _busy;
+    /// <summary>True while the displayed conversation has a request in flight.</summary>
+    public bool Busy => History.Current.Busy;
 
-    /// <summary>Raised (possibly on a background thread) when the status line changes; null = idle.</summary>
-    public event Action<string> StatusChanged;
-    /// <summary>Raised (possibly on a background thread) when a chat message is added.
-    /// persisted=true means the text is also in History.Turns; false = transient (e.g. errors).</summary>
-    public event Action<bool, string, bool> MessageAdded; // (fromUser, text, persisted)
+    /// <summary>Raised on the game thread with the conversation that owns the message.</summary>
+    public event Action<Conversation, bool, string, bool> MessageAdded;
+
+    /// <summary>Apply background results on the game thread, even while the menu is closed.</summary>
+    public void Update()
+    {
+        while (PendingUpdates.TryDequeue(out var update)) update();
+    }
+
+    private void QueueUpdate(Conversation conversation, Action update) => PendingUpdates.Enqueue(() =>
+    {
+        if (History.All.Contains(conversation)) update();
+    });
+
+    private void SetStatus(Conversation conversation, string status) =>
+        QueueUpdate(conversation, () => conversation.Status = status);
+
+    private void Notice(Conversation conversation, string text)
+    {
+        conversation.Notices.Add(text);
+        MessageAdded?.Invoke(conversation, false, text, false);
+    }
 
     public ChatService(IModHelper helper, IMonitor monitor, ModConfig config,
-        GameStateService state, ToolRegistry tools, ChatHistory history)
+        GameStateService state, ToolRegistry tools, ChatHistory history, Func<LlmClient> clientFactory = null)
     {
         Helper = helper;
         Monitor = monitor;
@@ -39,6 +58,7 @@ public class ChatService
         State = state;
         Tools = tools;
         History = history;
+        ClientFactory = clientFactory;
     }
 
     public bool Configured
@@ -55,58 +75,73 @@ public class ChatService
 
     public void ResetHistory() => History.Clear();
 
-    public void Ask(string userText, bool showUserInChat = true, bool addToHistory = true, string extraSystem = null)
+    /// <summary>Start a request for the current chat. The task completes when background work
+    /// finishes; Update applies its queued results on the game thread.</summary>
+    public Task Ask(string userText, bool showUserInChat = true, bool addToHistory = true, string extraSystem = null)
     {
-        if (string.IsNullOrWhiteSpace(userText)) return;
+        if (string.IsNullOrWhiteSpace(userText)) return Task.CompletedTask;
 
-        if (_busy)
+        var conversation = History.Current;
+        if (conversation.Busy)
         {
-            MessageAdded?.Invoke(false, "(I'm still working on your last question — give me a moment!)", false);
-            return;
+            Notice(conversation, "(I'm still working on your last question — give me a moment!)");
+            return Task.CompletedTask;
         }
         if (!Configured)
         {
-            MessageAdded?.Invoke(false,
+            Notice(conversation,
                 "I'm not set up yet! Click the Settings button below (or run `gamma settings` in the SMAPI console) "
-                + "to pick a provider and add your API key. Local models via Ollama or LM Studio need no key at all.", false);
-            return;
+                + "to pick a provider and add your API key. Local models via Ollama or LM Studio need no key at all.");
+            return Task.CompletedTask;
         }
 
-        if (showUserInChat) MessageAdded?.Invoke(true, userText, addToHistory);
-        if (addToHistory) History.Add("user", userText);
+        // Capture the destination and prompt before the user can switch conversations.
+        var historySnapshot = History.Recent(Config.HistoryMessagesKept);
+        if (addToHistory) History.Add(conversation, "user", userText);
+        if (showUserInChat) MessageAdded?.Invoke(conversation, true, userText, addToHistory);
+        string systemPrompt = BuildSystemPrompt(extraSystem);
+        LlmClient client = ClientFactory?.Invoke() ?? CreateClient();
+        string originalTitle = conversation.Title;
+        string namingText = Config.AutoNameChats && conversation.Turns.Count == 1
+            && conversation.Turns[0].Role == "user" ? conversation.Turns[0].Text : null;
+        conversation.Busy = true;
+        conversation.Status = "Thinking…";
         Monitor.Log($"Gamma: sending request (provider '{Config.Provider}', model '{Config.Model}')", LogLevel.Debug);
 
-        _busy = true;
-        StatusChanged?.Invoke("Thinking…");
-        LlmClient client = CreateClient();
-        var historySnapshot = History.Recent(Config.HistoryMessagesKept);
-
-        Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
-                string answer = await RunConversation(client, historySnapshot, userText, extraSystem);
-                History.Add("assistant", answer);
-                History.Save();
-                MessageAdded?.Invoke(false, answer, true);
-                await TryAutoNameChat(client);
+                string answer = await RunConversation(client, historySnapshot, userText, systemPrompt, conversation);
+                QueueUpdate(conversation, () =>
+                {
+                    History.Add(conversation, "assistant", answer);
+                    History.Save();
+                    MessageAdded?.Invoke(conversation, false, answer, true);
+                });
+                if (namingText != null)
+                    await TryAutoNameChat(client, conversation, namingText, originalTitle);
             }
             catch (Exception ex)
             {
                 Monitor.Log($"Gamma chat error: {ex}", LogLevel.Error);
-                MessageAdded?.Invoke(false, "Sorry, something went wrong talking to the AI: " + FriendlyError(ex), false);
+                QueueUpdate(conversation, () => Notice(conversation,
+                    "Sorry, something went wrong talking to the AI: " + FriendlyError(ex)));
             }
             finally
             {
-                _busy = false;
-                StatusChanged?.Invoke(null);
+                QueueUpdate(conversation, () =>
+                {
+                    conversation.Busy = false;
+                    conversation.Status = null;
+                });
             }
         });
     }
 
-    private async Task<string> RunConversation(LlmClient client, List<ChatTurn> history, string userText, string extraSystem)
+    private async Task<string> RunConversation(LlmClient client, List<ChatTurn> history, string userText, string systemPrompt, Conversation conversation)
     {
-        var wire = new List<WireMessage> { WireMessage.System(BuildSystemPrompt(extraSystem)) };
+        var wire = new List<WireMessage> { WireMessage.System(systemPrompt) };
         foreach (var turn in history)
             wire.Add(turn.Role == "user" ? WireMessage.User(turn.Text) : WireMessage.AssistantText(turn.Text));
         wire.Add(WireMessage.User(userText));
@@ -129,7 +164,7 @@ public class ChatService
             wire.Add(WireMessage.AssistantResult(result));
             foreach (var call in result.ToolCalls)
             {
-                StatusChanged?.Invoke(Tools.DisplayLabel(call.Name));
+                SetStatus(conversation, Tools.DisplayLabel(call.Name));
                 Monitor.Log($"Tool call: {call.Name}({call.ArgumentsJson})", LogLevel.Debug);
                 string output = Tools.Execute(call);
 
@@ -141,7 +176,7 @@ public class ChatService
         }
 
         // out of tool budget: force a final answer from what was gathered instead of a dead end
-        StatusChanged?.Invoke("Writing the answer…");
+        SetStatus(conversation, "Writing the answer…");
         Monitor.Log("Gamma: tool budget exhausted, forcing a final answer", LogLevel.Debug);
         wire.Add(WireMessage.User(
             "You've used up your tool budget for this question. Do not request any more tools. "
@@ -157,17 +192,13 @@ public class ChatService
     /// After the first exchange in a fresh chat, asks the model for a short conversation
     /// title. Best-effort: any failure keeps the first-message auto-title.
     /// </summary>
-    private async Task TryAutoNameChat(LlmClient client)
+    private async Task TryAutoNameChat(LlmClient client, Conversation convo, string firstMessage, string originalTitle)
     {
-        if (!Config.AutoNameChats) return;
-        var convo = History.Current;
-        if (convo.Turns.Count != 2 || convo.Turns[0].Role != "user") return; // only the first exchange
-
         try
         {
             var prompt = "Reply with ONLY a short title (3 to 6 words) for a chat that starts with the message below. "
                 + "No quotes, no ending punctuation, same language as the message.\n\n"
-                + convo.Turns[0].Text;
+                + firstMessage;
             var result = await client.CompleteAsync(
                 new List<WireMessage> { WireMessage.User(prompt) }, Array.Empty<ToolSpec>());
 
@@ -176,8 +207,12 @@ public class ChatService
             if (title.Length > 48) title = title.Substring(0, 48).TrimEnd() + "…";
             if (title.Length < 2) return;
 
-            convo.Title = title;
-            History.Save();
+            QueueUpdate(convo, () =>
+            {
+                if (convo.Title != originalTitle) return; // preserve a manual rename during the request
+                convo.Title = title;
+                History.Save();
+            });
             Monitor.Log($"Gamma: chat auto-named '{title}'", LogLevel.Debug);
         }
         catch (Exception ex)

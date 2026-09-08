@@ -74,6 +74,7 @@ public class SettingsMenu : IClickableMenu
     private int PresetIndex;
     private int SearchPresetIndex;
     private TextBox Focused;
+    private readonly List<(Rectangle Bounds, TextBox Box)> Navigation = new();
 
     public SettingsMenu(ModConfig config, Action saveConfig, Action onSaved)
         : base(0, 0, 0, 0, showUpperRightCloseButton: true)
@@ -145,6 +146,19 @@ public class SettingsMenu : IClickableMenu
         CancelButton = new Rectangle(xPositionOnScreen + width / 2 + 10, buttonY, 250, 44);
 
         Boxes = new List<TextBox> { ApiBaseUrlBox, ApiKeyBox, ModelBox, SearchApiKeyBox };
+        Navigation.Add((ProviderButton, null));
+        Navigation.Add((Bounds(ApiBaseUrlBox), ApiBaseUrlBox));
+        Navigation.Add((AuthButton, null));
+        Navigation.Add((Bounds(ApiKeyBox), ApiKeyBox));
+        Navigation.Add((Bounds(ModelBox), ModelBox));
+        Navigation.Add((ModelsButton, null));
+        Navigation.Add((SearchProviderButton, null));
+        Navigation.Add((Bounds(SearchApiKeyBox), SearchApiKeyBox));
+        Navigation.Add((AutoNameButton, null));
+        Navigation.Add((SaveButton, null));
+        Navigation.Add((CancelButton, null));
+        if (upperRightCloseButton != null)
+            Navigation.Add((upperRightCloseButton.bounds, null));
         Focus(ApiBaseUrlBox);
 
         Game1.playSound("shwip");
@@ -279,13 +293,7 @@ public class SettingsMenu : IClickableMenu
     public override void update(GameTime time)
     {
         base.update(time);
-        foreach (var box in Boxes) box.Update();
-
-        // TextBox.Update() re-derives Selected from the mouse position every frame (hover
-        // = selected, and typed input is dropped unless Selected). Override it so Selected
-        // means "this is the focused field" — otherwise keyboard shortcuts act on whatever
-        // field the cursor happens to be over and Focused drifts out of sync.
-        foreach (var box in Boxes) box.Selected = box == Focused;
+        // Focus is managed by clicks/navigation. TextBox.Update opens the keyboard on hover.
 
         while (PendingModels.TryDequeue(out var list))
         {
@@ -306,7 +314,9 @@ public class SettingsMenu : IClickableMenu
         int labelX = xPositionOnScreen + Pad;
         b.DrawString(Game1.smallFont, $"{Config.ChatbotName ?? "Gamma"} Settings", new Vector2(labelX, yPositionOnScreen + 16),
             new Color(255, 236, 160), 0f, Vector2.Zero, 1f, SpriteEffects.None, 0.9f);
-        b.DrawString(Game1.smallFont, "Tab: next field   ·   Enter: save   ·   Esc: cancel",
+        b.DrawString(Game1.smallFont, Game1.options.gamepadControls
+                ? "A on field: type  ·  LB/RB: option  ·  X: save  ·  B: cancel"
+                : "Tab: next field   ·   Enter: save   ·   Esc: cancel",
             new Vector2(labelX, yPositionOnScreen + 16 + VanillaUi.LineHeight + 2), new Color(214, 202, 178),
             0f, Vector2.Zero, 1f, SpriteEffects.None, 0.9f);
 
@@ -400,6 +410,15 @@ public class SettingsMenu : IClickableMenu
 
     public override void receiveKeyPress(Keys key)
     {
+        // In gamepad compatibility mode the game maps B/Start/Y to the menu key (Escape
+        // by default) and feeds them here as well; those buttons are handled properly in
+        // receiveGamePadButton, so don't let the mapped Escape cancel the form or save it.
+        // Y and Start are intentionally ignored while this menu is active.
+        if (Game1.options.gamepadControls
+            && (Game1.input.GetGamePadState().IsButtonDown(Buttons.B)
+                || Game1.input.GetGamePadState().IsButtonDown(Buttons.Start)
+                || Game1.input.GetGamePadState().IsButtonDown(Buttons.Y)))
+            return;
         var kb = Keyboard.GetState();
         bool ctrl = kb.IsKeyDown(Keys.LeftControl) || kb.IsKeyDown(Keys.RightControl);
         if (ctrl && Focused != null && key == Keys.V)
@@ -450,13 +469,81 @@ public class SettingsMenu : IClickableMenu
         return Boxes[(i + 1) % Boxes.Count];
     }
 
+    private static Rectangle Bounds(TextBox box) => new(box.X, box.Y, box.Width, box.Height);
+
+    private void MoveToOption(int direction)
+    {
+        // Start at the cursor so free movement and bumper navigation work together.
+        int index = Navigation.FindIndex(option => option.Bounds.Contains(Game1.getMouseX(), Game1.getMouseY()));
+        if (index < 0 && Focused != null)
+            index = Navigation.FindIndex(option => option.Box == Focused);
+        if (index < 0) index = direction > 0 ? -1 : 0;
+        var next = Navigation[(index + direction + Navigation.Count) % Navigation.Count];
+        Focus(next.Box);
+        Game1.setMousePosition(next.Bounds.Center.X, next.Bounds.Center.Y, ui_scale: true);
+        Game1.playSound("shiny4");
+    }
+
+    // Keep analog cursor movement available even when the player enables snappy menus.
+    public override bool overrideSnappyMenuCursorMovementBan() => true;
+
+    /// <summary>
+    /// Gamepad support (mirrors ChatMenu: left stick moves the cursor, A clicks, right
+    /// stick scrolls — see Game1.Update's !areGamePadControlsImplemented paths). What we
+    /// add on top: A on a text field opens the game's on-screen keyboard,
+    /// LB/RB (or triggers, or D-pad up/down) cycle all options without aiming, X saves,
+    /// B cancels. While the OSK is open the game routes gamepad input to it exclusively
+    /// (updateTextEntry instead of updateActiveMenu), so this menu sees nothing until
+    /// the keyboard closes; the textEntry checks below are just safety nets.
+    /// </summary>
+    public override void receiveGamePadButton(Buttons button)
+    {
+        if (Game1.textEntry != null)
+            return;
+        switch (button)
+        {
+            case Buttons.B:
+            case Buttons.Back:
+                Cancel();
+                break;
+            case Buttons.A:
+                var box = Boxes.Find(field => Bounds(field).Contains(Game1.getMouseX(), Game1.getMouseY()));
+                if (box != null)
+                {
+                    Focus(box);
+                    Game1.showTextEntry(box);
+                }
+                break;
+            case Buttons.X:
+                SaveAndExit();
+                break;
+            case Buttons.LeftShoulder:
+            case Buttons.LeftTrigger:
+            case Buttons.DPadUp:
+                MoveToOption(-1);
+                break;
+            case Buttons.RightShoulder:
+            case Buttons.RightTrigger:
+            case Buttons.DPadDown:
+                MoveToOption(1);
+                break;
+        }
+    }
+
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        // With the on-screen keyboard open, clicks belong to it (gamepad A hits its keys
+        // even though the cursor overlaps our menu underneath)
+        if (Game1.textEntry != null)
+            return;
         if (upperRightCloseButton != null && upperRightCloseButton.containsPoint(x, y))
         {
             Cancel();
             return;
         }
+        var target = Navigation.Find(option => option.Bounds.Contains(x, y));
+        if (target.Bounds != Rectangle.Empty)
+            Focus(target.Box);
         if (ProviderButton.Contains(x, y))
         {
             PresetIndex = (PresetIndex + 1) % ProviderPresets.Length;

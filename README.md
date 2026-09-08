@@ -164,10 +164,19 @@ in-game settings, pick `searxng` and the search row becomes the instance URL fie
 
 - **O** (configurable via `OpenChatKey`) opens the chat window. Enter sends, Esc closes,
   scroll wheel reviews history.
+- **Controller**: clicking the **right stick** (configurable via `OpenChatGamepadButton`)
+  also opens the chat window. Inside it, the game's usual gamepad support applies — left
+  stick moves the cursor, **A** clicks (and opens the keyboard on text fields),
+  right stick scrolls, **X** starts a new chat, **LB/RB**
+  (or triggers) switch chats, **D-pad up/down** scrolls history, and **B** closes the
+  keyboard, then clears the input, then closes the window. OSK **Start** submits the
+  message. **Y** does nothing in either menu. In settings, **A** on a text field opens
+  the keyboard, **LB/RB** (or triggers / D-pad up/down) cycle all fields and buttons, **X** saves,
+  **B** cancels; preset rows and Save/Cancel remain clickable with the stick + **A**.
 - When a reply arrives while the window is closed, a badge appears on the HUD.
 - **Generic Mod Config Menu** — if you have
   [GMCM](https://www.nexusmods.com/stardewvalley/mods/5098) installed, every option
-  (provider, key, model, web search, the chat keybind, and the chatbot's display name)
+  (provider, key, model, web search, the chat keybinds, and the chatbot's display name)
   is editable in its UI at the title screen or under the game's options cog icon.
   "Reset to defaults" there deliberately keeps your API keys.
 - SMAPI console commands:

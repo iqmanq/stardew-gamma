@@ -50,6 +50,7 @@ public class ModEntry : Mod
         helper.Events.GameLoop.UpdateTicked += (_, _) =>
         {
             DrainGameThreadActions();
+            Chat.Update();
             TestRunner?.Update();
         };
 
@@ -60,7 +61,7 @@ public class ModEntry : Mod
         if (Environment.GetEnvironmentVariable("GAMMA_AUTO_TEST") == "1")
             StartUiTest(autoExit: true);
 
-        Monitor.Log("Gamma loaded — press O (configurable) in game to chat.", LogLevel.Info);
+        Monitor.Log("Gamma loaded — press O (configurable) or click the right stick in game to chat.", LogLevel.Info);
     }
 
     // ---------- game-thread marshalling ----------
@@ -95,7 +96,7 @@ public class ModEntry : Mod
 
     // ---------- chat events ----------
 
-    private void OnMessageAdded(bool fromUser, string text, bool persisted)
+    private void OnMessageAdded(Conversation conversation, bool fromUser, string text, bool persisted)
     {
         if (fromUser) return;
         Monitor.Log("Gamma: " + text, LogLevel.Info);
@@ -108,7 +109,7 @@ public class ModEntry : Mod
     private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
     {
         if (!Context.IsWorldReady) return;
-        if (e.Button != Config.OpenChatKey) return;
+        if (e.Button != Config.OpenChatKey && e.Button != Config.OpenChatGamepadButton) return;
         if (Game1.activeClickableMenu != null || Game1.eventUp || Game1.dialogueUp) return;
         OpenMenu();
     }
@@ -259,6 +260,8 @@ public class ModEntry : Mod
             () => "History messages kept", () => "How many recent messages the AI can see for context", 2, 100, 1);
         api.AddKeybind(ModManifest, () => Config.OpenChatKey, v => Config.OpenChatKey = v,
             () => "Open chat keybind", () => "Key that opens the chat window while playing");
+        api.AddKeybind(ModManifest, () => Config.OpenChatGamepadButton, v => Config.OpenChatGamepadButton = v,
+            () => "Open chat gamepad button", () => "Controller button that opens the chat window (e.g. right-stick click). In the chat window: A on a field types, X is new chat, LB/RB switch chats, B closes. In settings: A on a field types, LB/RB cycle options, X saves, B cancels");
 
         api.AddSectionTitle(ModManifest, () => "Chat history limits");
         api.AddNumberOption(ModManifest, () => Config.MaxTurnsPerChat, v => Config.MaxTurnsPerChat = v,
@@ -318,6 +321,7 @@ public class ModEntry : Mod
         Config.SavedTurnsPerChat = fresh.SavedTurnsPerChat;
         Config.AutoDeleteOldChats = fresh.AutoDeleteOldChats;
         Config.OpenChatKey = fresh.OpenChatKey;
+        Config.OpenChatGamepadButton = fresh.OpenChatGamepadButton;
     }
 
     // ---------- console commands ----------

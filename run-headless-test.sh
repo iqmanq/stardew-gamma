@@ -6,7 +6,7 @@
 # Usage:  ./run-headless-test.sh
 # Optional: GAMMA_AUTO_TEST_MODEL=<model-id> to override the model for this run.
 #
-# Screenshots land in ~/.local/share/StardewValley/Screenshots/gamma-test-*.png
+# Screenshots land in <game>/Mods/Gamma/ui-tests/gamma-test-*.png
 set -e
 GAME_DIR="${GAME_DIR:-$HOME/.steam/steam/steamapps/common/Stardew Valley}"
 OUT=$(mktemp -d)
@@ -30,4 +30,4 @@ xvfb-run -a -s "-screen 0 ${GAMMA_TEST_RES:-1920x1080}x24" "$GAME_DIR/StardewMod
 
 echo
 echo "=== headless test finished (log: $OUT/smapi.log) ==="
-ls -la "$HOME/.local/share/StardewValley/Screenshots/" 2>/dev/null | grep gamma || echo "(no gamma screenshots found)"
+ls -la "$GAME_DIR/Mods/Gamma/ui-tests/" 2>/dev/null || echo "(no ui-tests screenshots found)"

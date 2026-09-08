@@ -17,6 +17,11 @@ public class Conversation
     public string Id = Guid.NewGuid().ToString("N");
     public string Title = "New chat";
     public List<ChatTurn> Turns = new();
+
+    // Runtime state belongs to this conversation and is intentionally not persisted.
+    public bool Busy;
+    public string Status;
+    public readonly List<string> Notices = new();
 }
 
 public class SavedTurn
@@ -103,16 +108,18 @@ public class ChatHistory
         Active = Math.Clamp(Active > index ? Active - 1 : Active, 0, Conversations.Count - 1);
     }
 
-    public void Add(string role, string text)
+    public void Add(string role, string text) => Add(Current, role, text);
+
+    public void Add(Conversation convo, string role, string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return;
-        var turns = Current.Turns;
+        // A deleted chat (or one from a previous save) must not be resurrected.
+        if (!Conversations.Contains(convo) || string.IsNullOrWhiteSpace(text)) return;
+        var turns = convo.Turns;
         turns.Add(new ChatTurn { Role = role, Text = text });
         if (turns.Count > MaxTurns)
             turns.RemoveRange(0, turns.Count - MaxTurns);
 
         // auto-title from the first user message
-        var convo = Current;
         if (convo.Title == "New chat" && role == "user")
         {
             string title = text.Trim().Replace("\n", " ");

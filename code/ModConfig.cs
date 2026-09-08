@@ -33,6 +33,10 @@ public class ModConfig
     public bool RememberChatHistory { get; set; } = true;
     public int HistoryMessagesKept { get; set; } = 24;
     public SButton OpenChatKey { get; set; } = SButton.O;
+    // Controller button that also opens the chat window (RightStick = click the right
+    // stick). SMAPI raises Input.ButtonPressed for gamepad buttons, so it's handled
+    // exactly like OpenChatKey; RightStick isn't used by vanilla gameplay.
+    public SButton OpenChatGamepadButton { get; set; } = SButton.RightStick;
 
     // ---- Chat history limits --------------------------------------------------
     // Conversations kept at once (not user-configurable; raising the cap just lets

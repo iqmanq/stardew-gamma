@@ -35,9 +35,7 @@ public class ChatMenu : IClickableMenu
     private readonly Rectangle SettingsButton;
     private readonly int InputHeight;
 
-    private readonly ConcurrentQueue<(bool FromUser, string Text, bool Persisted)> PendingMessages = new();
-    private readonly List<string> TransientMessages = new(); // errors etc. that aren't in History
-    private readonly ConcurrentQueue<string> PendingStatus = new();
+    private readonly ConcurrentQueue<(Conversation Conversation, bool FromUser, string Text, bool Persisted)> PendingMessages = new();
 
     private List<RenderedTurn> Rendered = new();
     private bool _dirty = true;
@@ -94,49 +92,42 @@ public class ChatMenu : IClickableMenu
             limitWidth = false,
         };
         Game1.keyboardDispatcher.Subscriber = Input;
+        // Enter is unified through the TextBox's OnEnterPressed event: the keyboard
+        // dispatcher feeds it '\r' for a physical Enter, and the game's on-screen
+        // keyboard ("OK"/Start) does the same — one path sends for both inputs.
+        Input.OnEnterPressed += OnInputEnter;
         SendButton = new Rectangle(xPositionOnScreen + width - 130 - 16, Input.Y, 130, InputHeight);
         SettingsButton = new Rectangle(SendButton.X - 130 - 12, Input.Y, 130, InputHeight);
 
-        // live updates from the chat service (raised on background threads; queued here)
+        // Queue service notifications until the menu updates.
         Chat.MessageAdded += OnChatMessage;
-        Chat.StatusChanged += OnChatStatus;
 
         Game1.playSound("shwip");
     }
 
-    // ---------- event plumbing from the (background) chat service ----------
+    // ---------- conversation-scoped service notifications ----------
 
-    public void OnChatMessage(bool fromUser, string text, bool persisted) => PendingMessages.Enqueue((fromUser, text, persisted));
-    public void OnChatStatus(string status) => PendingStatus.Enqueue(status);
+    public void OnChatMessage(Conversation conversation, bool fromUser, string text, bool persisted) =>
+        PendingMessages.Enqueue((conversation, fromUser, text, persisted));
 
     // ---------- per-frame ----------
 
     public override void update(GameTime time)
     {
         base.update(time);
-        Input.Update();
-        // TextBox.Update() derives Selected from mouse hover each frame and drops all typed
-        // input unless Selected; the chat field is always the active field, so re-assert it
-        Input.Selected = true;
-        if (_renameBox != null)
-        {
-            _renameBox.Update();
-            _renameBox.Selected = true; // same hover quirk: keep it focused while renaming
-        }
+        // Focus is managed explicitly. TextBox.Update opens the keyboard on hover.
 
         while (PendingMessages.TryDequeue(out var msg))
         {
+            if (msg.Conversation != History.Current) continue;
             _dirty = true;
-            if (!msg.FromUser && !msg.Persisted)
-                TransientMessages.Add(msg.Text);
             if (!msg.FromUser)
             {
                 _scroll = 0;
                 Game1.playSound("smallSelect");
             }
         }
-        while (PendingStatus.TryDequeue(out var s))
-            _status = s;
+        _status = History.Current.Status;
 
         if (Chat.Turns.Count != _lastMessageCount)
         {
@@ -241,9 +232,22 @@ public class ChatMenu : IClickableMenu
         string botName = Config.ChatbotName ?? "Gamma";
         b.DrawString(Game1.smallFont, botName, new Vector2(msgX, titleTop), TitleColor,
             0f, Vector2.Zero, 1f, SpriteEffects.None, 0.9f);
-        b.DrawString(Game1.smallFont, $"Enter to send  ·  Esc to close  ·  scroll wheel to review",
-            new Vector2(msgX + (int)Game1.smallFont.MeasureString(botName).X + 24, titleTop),
-            StatusColor, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0.9f);
+        // Give hints their own wrapped rows and reserve the close button's column.
+        int hintRight = xPositionOnScreen + width - 22;
+        if (upperRightCloseButton != null)
+            hintRight = Math.Min(hintRight, upperRightCloseButton.bounds.Left - 12);
+        string hints = Game1.options.gamepadControls
+            ? "A on field to type  ·  X new chat  ·  LB/RB switch chat  ·  B to close  ·  right stick to review"
+            : "Enter to send  ·  Esc to close  ·  scroll wheel to review";
+        var hintLines = VanillaUi.Wrap(Game1.smallFont, hints, Math.Max(1, hintRight - msgX));
+        int hintY = titleTop + VanillaUi.LineHeight;
+        foreach (string line in hintLines)
+        {
+            b.DrawString(Game1.smallFont, line, new Vector2(msgX, hintY),
+                StatusColor, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0.9f);
+            hintY += VanillaUi.LineHeight;
+        }
+        areaTop = hintY + 8;
 
         if (_dirty)
         {
@@ -344,6 +348,7 @@ public class ChatMenu : IClickableMenu
     {
         var convo = History.All.FirstOrDefault(c => c.Id == id);
         if (convo == null) return;
+        Input.Selected = false;
         _editingId = id;
         _renameBox = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\chatBox"), null, Game1.smallFont, Color.White)
         {
@@ -353,12 +358,16 @@ public class ChatMenu : IClickableMenu
             Selected = true,
             limitWidth = false,
         };
+        _renameBox.OnEnterPressed += OnRenameEnter;
         Game1.keyboardDispatcher.Subscriber = _renameBox;
         Game1.playSound("shiny4");
     }
 
+    private void OnRenameEnter(TextBox box) => CommitRename(save: true);
+
     private void CommitRename(bool save)
     {
+        if (_renameBox != null) _renameBox.OnEnterPressed -= OnRenameEnter;
         var convo = History.All.FirstOrDefault(c => c.Id == _editingId);
         if (save && convo != null)
         {
@@ -372,6 +381,7 @@ public class ChatMenu : IClickableMenu
         }
         _editingId = null;
         _renameBox = null;
+        Input.Selected = true;
         Game1.keyboardDispatcher.Subscriber = Input;
         _dirty = true;
     }
@@ -389,7 +399,7 @@ public class ChatMenu : IClickableMenu
                     rendered.Lines.Add(new Line { Text = line, Color = user ? UserColor : GammaColor });
             Rendered.Add(rendered);
         }
-        foreach (var text in TransientMessages)
+        foreach (var text in History.Current.Notices)
         {
             var rendered = new RenderedTurn();
             foreach (var raw in text.Replace("\r\n", "\n").Split('\n'))
@@ -402,8 +412,18 @@ public class ChatMenu : IClickableMenu
 
     // ---------- input ----------
 
+    private void OnInputEnter(TextBox box) => Send();
+
     public override void receiveKeyPress(Keys key)
     {
+        // In gamepad compatibility mode the game maps B/Start/Y to the menu key (Escape
+        // by default) and feeds them here as well; those buttons are handled properly in
+        // receiveGamePadButton, so don't let the mapped Escape clear the input or close.
+        if (Game1.options.gamepadControls
+            && (Game1.input.GetGamePadState().IsButtonDown(Buttons.B)
+                || Game1.input.GetGamePadState().IsButtonDown(Buttons.Start)
+                || Game1.input.GetGamePadState().IsButtonDown(Buttons.Y)))
+            return;
         if (_editingId != null)
         {
             if (key == Keys.Enter || key == Keys.Tab) CommitRename(save: true);
@@ -412,24 +432,94 @@ public class ChatMenu : IClickableMenu
         }
         if (key == Keys.Escape)
         {
+            if (Game1.textEntry != null)
+            {
+                Game1.closeTextEntry(); // Esc with the on-screen keyboard open: just dismiss it
+                return;
+            }
             if (!string.IsNullOrEmpty(Input.Text))
                 Input.Text = "";
             else
                 Close();
             return;
         }
-        if (key == Keys.Enter)
-        {
-            Send();
-            return;
-        }
+        // Enter needs no case here: it arrives through Input.OnEnterPressed (see ctor).
         // Don't call base.receiveKeyPress: it closes the menu when the key matches
         // Options.menuButton (default Escape AND E). Typing reaches the TextBox through
         // the keyboard dispatcher, so unhandled keys can simply be swallowed here.
     }
 
+    // Keep analog cursor movement available even when the player enables snappy menus.
+    public override bool overrideSnappyMenuCursorMovementBan() => true;
+
+    /// <summary>
+    /// Gamepad support (the menu keeps the game's compatibility mode: left stick moves the
+    /// cursor, A/X are converted to left/right clicks, right stick scrolls — see
+    /// Game1.Update's !areGamePadControlsImplemented paths). What we add on top:
+    /// B clears/closes, A on a text field opens the keyboard, X starts a new chat,
+    /// LB/RB (or triggers) switch to the previous/next conversation, D-pad up/down
+    /// scrolls the history — so the sidebar never needs pixel-aiming with the stick.
+    /// </summary>
+    public override void receiveGamePadButton(Buttons button)
+    {
+        // While the on-screen keyboard is open the game routes gamepad input to it
+        // exclusively (updateTextEntry instead of updateActiveMenu), so this menu sees
+        // nothing until the keyboard closes; this check is just a safety net.
+        if (Game1.textEntry != null)
+            return;
+        switch (button)
+        {
+            case Buttons.B:
+                if (_editingId != null) { CommitRename(save: false); break; }
+                if (!string.IsNullOrEmpty(Input.Text)) { Input.Text = ""; Game1.playSound("tinyWhip"); break; }
+                Close();
+                break;
+            case Buttons.A:
+                var box = _renameBox ?? Input;
+                if (new Rectangle(box.X, box.Y, box.Width, box.Height).Contains(Game1.getMouseX(), Game1.getMouseY()))
+                    Game1.showTextEntry(box);
+                break;
+            case Buttons.X:
+                if (_editingId != null) break; // finish/cancel the rename first (B or Enter)
+                History.NewChat();
+                ConversationChanged();
+                break;
+            case Buttons.LeftShoulder:
+            case Buttons.LeftTrigger:
+                if (_editingId != null) break;
+                SwitchChat(-1);
+                break;
+            case Buttons.RightShoulder:
+            case Buttons.RightTrigger:
+                if (_editingId != null) break;
+                SwitchChat(+1);
+                break;
+            case Buttons.DPadUp:
+                _scroll += 80;
+                break;
+            case Buttons.DPadDown:
+                _scroll -= 80;
+                break;
+        }
+    }
+
+    /// <summary>Moves the active conversation without touching the sidebar cursor.</summary>
+    private void SwitchChat(int direction)
+    {
+        var all = History.All;
+        if (all.Count == 0) return;
+        int next = (History.ActiveIndex + direction + all.Count) % all.Count;
+        if (next == History.ActiveIndex) return;
+        History.Select(next);
+        ConversationChanged();
+    }
+
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
+        // With the on-screen keyboard open, clicks belong to it (gamepad A hits its keys
+        // even though the cursor overlaps our menu underneath)
+        if (Game1.textEntry != null)
+            return;
         if (_editingId != null)
         {
             // clicking the rename field keeps editing; anywhere else commits the title
@@ -504,6 +594,8 @@ public class ChatMenu : IClickableMenu
 
     public override void receiveScrollWheelAction(int direction)
     {
+        if (Game1.textEntry != null)
+            return; // right stick/wheel scrolls the on-screen keyboard while it's open
         base.receiveScrollWheelAction(direction);
         int mx = Game1.getMouseX(true);
         int my = Game1.getMouseY(true);
@@ -526,7 +618,7 @@ public class ChatMenu : IClickableMenu
         _dirty = true;
         _scroll = 0;
         _lastMessageCount = -1;
-        TransientMessages.Clear();
+        _status = History.Current.Status;
         Input.Selected = true;
         Game1.playSound("smallSelect");
     }
@@ -548,6 +640,14 @@ public class ChatMenu : IClickableMenu
         Send();
     }
 
+    /// <summary>Test hook: fills the input without sending (gamepad tests).</summary>
+    internal void TestSetInput(string text) => Input.Text = text;
+
+    /// <summary>Test hook: current input text (gamepad tests).</summary>
+    internal string TestInputText => Input.Text;
+
+    internal Rectangle TestInputBounds => new(Input.X, Input.Y, Input.Width, Input.Height);
+
     private void Close()
     {
         Cleanup();
@@ -558,7 +658,7 @@ public class ChatMenu : IClickableMenu
     private void Cleanup()
     {
         Chat.MessageAdded -= OnChatMessage;
-        Chat.StatusChanged -= OnChatStatus;
+        Input.OnEnterPressed -= OnInputEnter;
         Game1.keyboardDispatcher.Subscriber = null;
     }
 

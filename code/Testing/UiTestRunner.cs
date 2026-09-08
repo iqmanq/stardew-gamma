@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewValley;
 using Gamma.Services;
@@ -68,7 +69,7 @@ public class UiTestRunner
                 Monitor.Log($"UI test: using model '{model}' for this run (config file not modified)", LogLevel.Info);
             }
         }
-        Monitor.Log("UI test armed — phases: seed → open chat → screenshot → send real message → screenshot → settings → screenshot", LogLevel.Info);
+        Monitor.Log("UI test armed — phases: seed → chat → message/reply → gamepad (B clear, A keyboard, B close) → settings → screenshot", LogLevel.Info);
     }
 
     private bool _dumpedTextures;
@@ -224,19 +225,67 @@ public class UiTestRunner
                 if (Chat.Busy && !Waited(100)) return;
                 if (!Waited(1.5)) return; // give the reply a moment to render
                 if (!Shot("gamma-test-2-reply")) return;
-                Game1.exitActiveMenu();
+                Next(); // keep the menu open for the gamepad phases
+                break;
+
+            case 4: // gamepad: B clears the input (menu stays open), A opens the OSK
+                if (!Waited(0.5)) return;
+                Menu.TestSetInput("controller typing test");
+                Menu.receiveGamePadButton(Buttons.B);
+                if (Menu.TestInputText != "")
+                    throw new Exception("gamepad B did not clear the input");
+                Game1.setMousePosition(Menu.TestInputBounds.Center, ui_scale: true);
+                Menu.update(Game1.currentGameTime);
+                Menu.receiveGamePadButton(Buttons.Y);
+                if (Game1.textEntry != null)
+                    throw new Exception("Hovering a field or pressing Y opened the on-screen keyboard");
+                Menu.receiveGamePadButton(Buttons.A);
+                if (Game1.textEntry == null)
+                    throw new Exception("gamepad A on the input did not open the on-screen keyboard");
                 Next();
                 break;
 
-            case 4: // open settings
+            case 5: // screenshot the on-screen keyboard over the chat window
+                if (!Waited(0.5)) return;
+                if (!Shot("gamma-test-3-osk")) return;
+                Next();
+                break;
+
+            case 6: // gamepad B with the OSK open: the game routes it to the keyboard
+                    // exclusively (updateTextEntry replaces updateActiveMenu), so the
+                    // keyboard closes and the chat menu must NOT have seen the press
+                Game1.textEntry.receiveGamePadButton(Buttons.B);
+                if (Game1.textEntry != null)
+                    throw new Exception("gamepad B did not close the on-screen keyboard");
+                if (Game1.activeClickableMenu is not ChatMenu)
+                    throw new Exception("chat menu closed while the on-screen keyboard was open");
+                Next();
+                break;
+
+            case 7: // a later B press (keyboard now closed) reaches the menu and closes it
+                if (!Waited(0.5)) return;
+                Menu.receiveGamePadButton(Buttons.B);
+                Next();
+                break;
+
+            case 8: // confirm the chat menu closed (at the title screen the game's own
+                    // TitleMenu re-registers itself as active afterwards, so don't check
+                    // for null — check that OUR menu is gone)
+                if (!Waited(1)) return;
+                if (ReferenceEquals(Game1.activeClickableMenu, Menu))
+                    throw new Exception("gamepad B did not close the chat menu");
+                Next();
+                break;
+
+            case 9: // open settings
                 if (!Waited(1.5)) return;
                 OpenSettings();
                 Next();
                 break;
 
-            case 5: // screenshot settings, wrap up
+            case 10: // screenshot settings, wrap up
                 if (!Waited(3)) return;
-                if (!Shot("gamma-test-3-settings")) return;
+                if (!Shot("gamma-test-4-settings")) return;
                 Game1.exitActiveMenu();
                 Finish(success: true);
                 break;
