@@ -86,9 +86,9 @@ Recommended model: **`gemini-flash-lite-latest`** — fast, 500 free requests pe
 2. Open [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) (Profile → **Keys**).
 3. Click **Create key**, give it any name, and copy it (starts with `sk-or-v1-`, shown only once — save it somewhere).
 4. Free models work out of the box; there's no need to add credits unless you pick paid models.
-5. In Gamma's settings screen, pick the **OpenRouter** preset, paste the key, and hit **Save**. The model is pre-filled to `minimax/minimax-m3:free`.
+5. In Gamma's settings screen, pick the **OpenRouter** preset, paste the key, and hit **Save**. The model is pre-filled to `openrouter/free`.
 
-Recommended model: **`minimax/minimax-m3:free`** — a large free model with a 1M-token context window. Note that OpenRouter free models have daily limits and can be busy at peak times; if a request fails with a rate-limit error, either retry later or add a few dollars of credit and drop the `:free` suffix to use the paid variant (`minimax/minimax-m3`).
+Recommended model: **`openrouter/free`** — OpenRouter's free-model router, which automatically selects an available free model. Free models have daily limits and can be busy at peak times; if a request fails with a rate-limit error, try again later or choose a specific model from the provider's model list.
 
 **Manual setup** — if you'd rather edit the config file than use the in-game screen, run the game once so SMAPI creates `Mods/Gamma/config.json`, then set `Provider`, `ApiKey`, and `Model` as in the examples below and restart.
 
@@ -128,7 +128,7 @@ Recommended model: **`minimax/minimax-m3:free`** — a large free model with a 1
   "Provider": "openai",
   "ApiBaseUrl": "https://openrouter.ai/api/v1",
   "ApiKey": "sk-or-...",
-  "Model": "minimax/minimax-m3:free"
+  "Model": "openrouter/free"
 }
 ```
 

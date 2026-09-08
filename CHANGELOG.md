@@ -11,6 +11,7 @@
 - Allowed requests in separate chats to run independently, and discarded late results for deleted chats or previously loaded saves.
 - Applied history and UI notifications on the game thread and removed duplicate copies of the current message from request prompts.
 - Added offline regression checks for conversation routing and updated the UI test harness and controller documentation.
+- Set `openrouter/free` as the default and recommended OpenRouter model in the README and in-game settings.
 
 ## 1.0.0
 

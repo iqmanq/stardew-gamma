@@ -17,7 +17,7 @@ public class ModConfig
     // Some gateways (e.g. opencode zen) want the raw key without the "Bearer " prefix.
     // With this off, the mod sends "Bearer <key>" and automatically retries raw on a 401.
     public bool UseRawKeyAuth { get; set; } = false;
-    public string Model { get; set; } = "gpt-4o-mini";
+    public string Model { get; set; } = "openrouter/free";
     public float Temperature { get; set; } = 0.7f;
     public int MaxResponseTokens { get; set; } = 1024;
     public int MaxToolRoundtrips { get; set; } = 10;

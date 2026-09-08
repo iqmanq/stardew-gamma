@@ -23,7 +23,7 @@ public class SettingsMenu : IClickableMenu
     internal static readonly (string Label, string Provider, string BaseUrl, string Model)[] ProviderPresets =
     {
         ("OpenAI",            "openai",    "https://api.openai.com/v1",      "gpt-4o-mini"),
-        ("OpenRouter",        "openai",    "https://openrouter.ai/api/v1",   "minimax/minimax-m3:free"),
+        ("OpenRouter",        "openai",    "https://openrouter.ai/api/v1",   "openrouter/free"),
         ("Google AI Studio",  "openai",    "https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-flash-lite-latest"),
         ("Groq",              "openai",    "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
         ("Ollama (local)",    "openai",    "http://localhost:11434/v1",      "llama3.1:8b"),
