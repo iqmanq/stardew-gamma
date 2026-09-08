@@ -29,7 +29,11 @@ can see your farm and search the Stardew Valley Wiki and the web to answer anyth
 
 **Extras:**
 
-- Chat history is remembered per save, across game sessions
+- Multiple named chats, with history remembered per save across game sessions
+- Replies, thinking indicators, tool progress, errors, and automatic titles stay with the
+  chat where you sent the message, even while you switch chats or close the menu
+- Independent requests in different chats can run at the same time
+- Controller support in chat and settings, including free cursor movement and on-screen typing
 - Unread-message badge on the HUD when it replies while the window is closed
 - Console commands (see below) so you can use it without opening the UI
 
@@ -44,7 +48,7 @@ message (chat window, or `gamma ask` in the console).
 
 ## Setup
 
-1. Install the mod: download `Gamma-1.0.0.zip` from the
+1. Install the mod: download `Gamma-1.0.1.zip` from the
    [latest release](https://github.com/iqmanq/stardew-gamma/releases/latest) (or from the
    Nexus page) and unzip it into your game's `Mods/` folder — you should end up with
    `Mods/Gamma/` containing `Gamma.dll` and `manifest.json`. (Alternatively, build from
@@ -55,6 +59,13 @@ message (chat window, or `gamma ask` in the console).
    time via the **Settings** button in the chat window or `gamma settings` in the SMAPI console.
 3. If you prefer editing files by hand, run the game once so SMAPI creates
    `Mods/Gamma/config.json`, edit it, and restart.
+
+### Updating
+
+Close the game, download the latest release ZIP, and replace `Gamma.dll` and
+`manifest.json` in your existing `Mods/Gamma/` folder. Keep your `config.json` to
+preserve provider settings and API keys; chat history is stored separately by SMAPI.
+Restart the game to load the update. See [CHANGELOG.md](CHANGELOG.md) for release changes.
 
 ### Getting an API key
 
@@ -166,13 +177,16 @@ in-game settings, pick `searxng` and the search row becomes the instance URL fie
   scroll wheel reviews history.
 - **Controller**: clicking the **right stick** (configurable via `OpenChatGamepadButton`)
   also opens the chat window. Inside it, the game's usual gamepad support applies — left
-  stick moves the cursor, **A** clicks (and opens the keyboard on text fields),
+  stick freely moves the cursor even with snappy menus enabled, **A** clicks
+  (and opens the keyboard only when pressed over a text field),
   right stick scrolls, **X** starts a new chat, **LB/RB**
   (or triggers) switch chats, **D-pad up/down** scrolls history, and **B** closes the
   keyboard, then clears the input, then closes the window. OSK **Start** submits the
   message. **Y** does nothing in either menu. In settings, **A** on a text field opens
   the keyboard, **LB/RB** (or triggers / D-pad up/down) cycle all fields and buttons, **X** saves,
-  **B** cancels; preset rows and Save/Cancel remain clickable with the stick + **A**.
+  **B** cancels. Navigation includes provider/auth options, **Load list**, **Web search**,
+  **Name chats with AI**, and Save/Cancel. Hovering or selecting a field with LB/RB does
+  not open the keyboard.
 - When a reply arrives while the window is closed, a badge appears on the HUD.
 - **Generic Mod Config Menu** — if you have
   [GMCM](https://www.nexusmods.com/stardewvalley/mods/5098) installed, every option
@@ -222,15 +236,26 @@ dotnet build -p:GamePath="C:\Program Files (x86)\Steam\steamapps\common\Stardew 
 
 ## Testing
 
-The mod can test itself — no manual play needed:
+Run the conversation-routing regression checks with the .NET 8 SDK:
+
+```bash
+dotnet run --project tests/ConversationRouting.csproj
+```
+
+These use a fake provider and game stubs to check chat switching, concurrent requests,
+progress/reply/error/title ownership, persistence, and late replies after deletion or
+loading another save. They do not make network requests or touch real saved chats.
+
+The in-game UI harness exercises real game controls and rendering:
 
 - **In game**: run `gamma testui` in the SMAPI console. It seeds a sample conversation,
-  opens the chat window, sends one real chat request, opens the settings screen, and saves
+  opens the chat window, sends one real chat request, checks A/Y/B keyboard behavior,
+  opens the settings screen, and saves
   a screenshot of each step to `Mods/Gamma/ui-tests/`.
 - **Fully headless** (no window, no audio, quits when done):
 
   ```bash
-  ./run-headless-test.sh                       # uses a known-working model by default
+  ./run-headless-test.sh                       # uses your configured model
   GAMMA_AUTO_TEST_MODEL=gpt-4o-mini ./run-headless-test.sh
   ```
 
@@ -238,6 +263,8 @@ The mod can test itself — no manual play needed:
   driver + OpenAL null backend), runs the same automated pass, and writes the log and
   screenshots out. Note: headless runs render at a slightly different scale than a real
   window, so use the screenshots to check content/colors, not exact pixel layout.
+  Use a test history: the harness clears the current chat and adds test conversations.
+  Physical controller movement still needs an in-game check.
 
 ## How it works (for the curious)
 

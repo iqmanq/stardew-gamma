@@ -6,7 +6,7 @@
     <Nullable>disable</Nullable>
     <AssemblyName>Gamma</AssemblyName>
     <RootNamespace>Gamma</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- Override with: dotnet build -p:GamePath="C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley" -->
     <GamePath Condition="'$(GamePath)' == ''">$(HOME)/.steam/steam/steamapps/common/Stardew Valley</GamePath>
